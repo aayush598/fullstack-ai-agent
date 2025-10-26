@@ -1,0 +1,661 @@
+# Autonomous Full-Stack Application Factory
+# Workflow Blueprint Configuration
+
+workflow:
+  name: "Autonomous Full-Stack Application Factory"
+  version: "1.0.0"
+  description: "Complete autonomous workflow for generating production-ready full-stack applications"
+  
+  configuration:
+    max_iterations: 5
+    timeout_minutes: 60
+    parallel_execution: true
+    error_handling: "retry_with_feedback"
+    logging_level: "detailed"
+
+  stages:
+    # ==================== STAGE 1: PRODUCT DEFINITION ====================
+    - stage_id: "pdt"
+      name: "Product Definition"
+      team: "Product Definition Team"
+      description: "Transform user requirements into comprehensive technical specifications"
+      
+      agents:
+        - agent_id: "sia"
+          name: "Spec Intake Agent"
+          role: "Parse and structure user requirements"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - file_operations
+          tasks:
+            - "Parse user requirements comprehensively"
+            - "Identify functional and non-functional requirements"
+            - "Create structured specification documents"
+            - "Output product_spec.json"
+          
+        - agent_id: "dea"
+          name: "Domain Expert Agent"
+          role: "Enrich specifications with domain knowledge"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - web_search
+          tasks:
+            - "Analyze application domain"
+            - "Research industry standards and best practices"
+            - "Recommend appropriate tech stack"
+            - "Identify scalability patterns"
+            - "Output enriched_spec.json"
+          
+        - agent_id: "uxra"
+          name: "UX Research Agent"
+          role: "Design user experience"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - design_tools
+          tasks:
+            - "Create user journey maps"
+            - "Design information architecture"
+            - "Define wireframes and components"
+            - "Ensure accessibility compliance"
+            - "Output ux_blueprint.md"
+          
+        - agent_id: "sda"
+          name: "System Design Agent"
+          role: "Create system architecture"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - architecture_tools
+          tasks:
+            - "Design overall system architecture"
+            - "Define database schema"
+            - "Plan caching and queueing"
+            - "Design API structure"
+            - "Output system_architecture.yaml"
+          
+        - agent_id: "paa"
+          name: "Product Architect Agent"
+          role: "Finalize product specifications"
+          model: "claude-opus-4"
+          is_leader: true
+          tools:
+            - reasoning
+            - validation_tools
+            - file_operations
+          tasks:
+            - "Review all specifications"
+            - "Ensure consistency"
+            - "Create final architecture document"
+            - "Generate API contracts"
+            - "Validate technical feasibility"
+          
+      outputs:
+        - architecture_doc.md
+        - api_contract.yaml
+        - ux_blueprint.md
+        - system_architecture.yaml
+        - project_brief.json
+      
+      success_criteria:
+        - "All specifications complete"
+        - "Technical feasibility validated"
+        - "No conflicting requirements"
+      
+      next_stage: "dt"
+
+    # ==================== STAGE 2: DEVELOPMENT ====================
+    - stage_id: "dt"
+      name: "Development"
+      team: "Development Team"
+      description: "Build complete full-stack application"
+      
+      dependencies:
+        - stage: "pdt"
+          artifacts:
+            - architecture_doc.md
+            - api_contract.yaml
+            - system_architecture.yaml
+      
+      agents:
+        - agent_id: "dba"
+          name: "Database Agent"
+          role: "Design and implement database"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - python_interpreter
+            - sql_tools
+          tasks:
+            - "Create database schema"
+            - "Generate ORM models"
+            - "Implement migrations"
+            - "Add indexes and constraints"
+            - "Create seed data scripts"
+            - "Output schema.sql, models.py, migrations/"
+          
+        - agent_id: "bea"
+          name: "Backend Engineer Agent"
+          role: "Build backend services"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - python_interpreter
+            - api_tools
+          tasks:
+            - "Implement RESTful/GraphQL APIs"
+            - "Create service layer with business logic"
+            - "Implement authentication and authorization"
+            - "Add input validation and error handling"
+            - "Create middleware for logging"
+            - "Output backend/ directory"
+          
+        - agent_id: "fea"
+          name: "Frontend Engineer Agent"
+          role: "Build frontend application"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - javascript_tools
+          tasks:
+            - "Implement React/Vue/Svelte components"
+            - "Create responsive layouts"
+            - "Implement state management"
+            - "Add form validation"
+            - "Implement routing"
+            - "Output frontend/ directory"
+          
+        - agent_id: "ina"
+          name: "Integration Agent"
+          role: "Integrate all components"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - integration_tools
+          tasks:
+            - "Connect frontend to backend"
+            - "Implement API client"
+            - "Add error handling"
+            - "Integrate third-party services"
+            - "Output integrated application"
+          
+        - agent_id: "ida"
+          name: "Infrastructure Agent"
+          role: "Create deployment infrastructure"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - devops_tools
+          tasks:
+            - "Create Dockerfile"
+            - "Generate docker-compose.yml"
+            - "Create Kubernetes manifests"
+            - "Setup CI/CD pipelines"
+            - "Output infra/ directory"
+          
+        - agent_id: "poa"
+          name: "Performance Optimization Agent"
+          role: "Optimize application performance"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - profiling_tools
+          tasks:
+            - "Profile application"
+            - "Optimize database queries"
+            - "Implement caching"
+            - "Optimize bundle size"
+            - "Output performance_report.md"
+          
+        - agent_id: "dla"
+          name: "Development Lead Agent"
+          role: "Orchestrate development"
+          model: "claude-opus-4"
+          is_leader: true
+          tools:
+            - reasoning
+            - code_review_tools
+          tasks:
+            - "Coordinate all development agents"
+            - "Ensure code quality"
+            - "Review architecture implementation"
+            - "Create documentation"
+            - "Package complete application"
+      
+      outputs:
+        - complete_codebase/
+        - backend/
+        - frontend/
+        - infra/
+        - docs/
+        - README.md
+        - performance_report.md
+      
+      success_criteria:
+        - "All features implemented"
+        - "Code follows best practices"
+        - "Documentation complete"
+      
+      next_stage: "qst"
+
+    # ==================== STAGE 3: QUALITY & SECURITY ====================
+    - stage_id: "qst"
+      name: "Quality & Security"
+      team: "Quality & Security Team"
+      description: "Test and validate application"
+      
+      dependencies:
+        - stage: "dt"
+          artifacts:
+            - complete_codebase/
+            - backend/
+            - frontend/
+      
+      agents:
+        - agent_id: "cra"
+          name: "Code Review Agent"
+          role: "Perform code review"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - static_analysis
+          tasks:
+            - "Perform static code analysis"
+            - "Check code style and formatting"
+            - "Identify code smells"
+            - "Check for code duplication"
+            - "Output code_review_report.md"
+          
+        - agent_id: "tqa"
+          name: "Test & QA Agent"
+          role: "Create and execute tests"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - test_frameworks
+          tasks:
+            - "Generate unit tests"
+            - "Create integration tests"
+            - "Implement E2E tests"
+            - "Execute all tests"
+            - "Achieve >80% coverage"
+            - "Output test_results.json"
+          
+        - agent_id: "sca"
+          name: "Security Agent"
+          role: "Perform security audit"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - security_scanner
+          tasks:
+            - "Perform SAST"
+            - "Check OWASP Top 10"
+            - "Scan dependencies"
+            - "Verify authentication"
+            - "Test for vulnerabilities"
+            - "Output security_report.json"
+          
+        - agent_id: "lta"
+          name: "Load Testing Agent"
+          role: "Perform load testing"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - load_testing_tools
+          tasks:
+            - "Create load testing scripts"
+            - "Test endpoints under load"
+            - "Measure performance metrics"
+            - "Identify bottlenecks"
+            - "Output load_test_results.json"
+          
+        - agent_id: "oa"
+          name: "Observability Agent"
+          role: "Implement observability"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - monitoring_tools
+          tasks:
+            - "Add structured logging"
+            - "Implement distributed tracing"
+            - "Add application metrics"
+            - "Create health checks"
+            - "Output observability_config.yaml"
+          
+        - agent_id: "qal"
+          name: "QA Lead Agent"
+          role: "Make go/no-go decision"
+          model: "claude-opus-4"
+          is_leader: true
+          tools:
+            - reasoning
+            - decision_tools
+          tasks:
+            - "Review all reports"
+            - "Aggregate quality metrics"
+            - "Make go/no-go decision"
+            - "Create QA summary"
+            - "Provide feedback if needed"
+      
+      outputs:
+        - code_review_report.md
+        - test_results.json
+        - security_report.json
+        - load_test_results.json
+        - observability_config.yaml
+        - qa_decision.json
+      
+      success_criteria:
+        - "All tests pass"
+        - "No critical security issues"
+        - "Performance meets requirements"
+        - "Code quality score >90"
+      
+      conditional_routing:
+        - condition: "qa_decision.status == 'PASS'"
+          next_stage: "dot"
+        - condition: "qa_decision.status == 'FAIL'"
+          next_stage: "dt"
+          action: "return_with_feedback"
+
+    # ==================== STAGE 4: DEPLOYMENT & OPERATIONS ====================
+    - stage_id: "dot"
+      name: "Deployment & Operations"
+      team: "Deployment & Operations Team"
+      description: "Deploy to production"
+      
+      dependencies:
+        - stage: "qst"
+          artifacts:
+            - complete_codebase/
+            - qa_decision.json
+            - observability_config.yaml
+      
+      agents:
+        - agent_id: "epa"
+          name: "Environment Provisioning Agent"
+          role: "Provision infrastructure"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - cloud_provisioning
+          tasks:
+            - "Provision cloud resources"
+            - "Configure networking"
+            - "Setup databases"
+            - "Configure load balancers"
+            - "Output environment_state.json"
+          
+        - agent_id: "cpa"
+          name: "CI/CD Pipeline Agent"
+          role: "Manage deployment pipeline"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - cicd_tools
+          tasks:
+            - "Create CI/CD pipelines"
+            - "Setup automated testing"
+            - "Configure deployments"
+            - "Implement rollback strategy"
+            - "Output pipeline_config.yaml"
+          
+        - agent_id: "rma"
+          name: "Release Manager Agent"
+          role: "Execute releases"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - deployment_tools
+          tasks:
+            - "Deploy to staging"
+            - "Execute smoke tests"
+            - "Deploy to production"
+            - "Verify deployment"
+            - "Output deployment_manifest.yaml"
+          
+        - agent_id: "ma"
+          name: "Monitoring Agent"
+          role: "Monitor application"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - monitoring_tools
+          tasks:
+            - "Monitor metrics"
+            - "Track error rates"
+            - "Monitor resources"
+            - "Setup alerts"
+            - "Output telemetry_logs.json"
+          
+        - agent_id: "rba"
+          name: "Rollback Agent"
+          role: "Handle rollbacks"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - rollback_tools
+          tasks:
+            - "Detect failures"
+            - "Execute rollback"
+            - "Restore backups"
+            - "Verify rollback"
+            - "Output rollback_report.json"
+          
+        - agent_id: "ira"
+          name: "Incident Response Agent"
+          role: "Handle incidents"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - incident_tools
+          tasks:
+            - "Detect incidents"
+            - "Classify severity"
+            - "Perform root cause analysis"
+            - "Coordinate response"
+            - "Output incident_reports.json"
+          
+        - agent_id: "ola"
+          name: "Operations Lead Agent"
+          role: "Oversee operations"
+          model: "claude-opus-4"
+          is_leader: true
+          tools:
+            - reasoning
+            - orchestration_tools
+          tasks:
+            - "Coordinate deployment"
+            - "Ensure reliability"
+            - "Monitor system health"
+            - "Make operational decisions"
+            - "Output deployment_summary.json"
+      
+      outputs:
+        - environment_state.json
+        - pipeline_config.yaml
+        - deployment_manifest.yaml
+        - telemetry_logs.json
+        - incident_reports.json
+        - deployment_summary.json
+      
+      success_criteria:
+        - "Deployment successful"
+        - "All services healthy"
+        - "No critical errors"
+      
+      next_stage: "cit"
+
+    # ==================== STAGE 5: CONTINUOUS IMPROVEMENT ====================
+    - stage_id: "cit"
+      name: "Continuous Improvement"
+      team: "Continuous Improvement Team"
+      description: "Learn and improve"
+      
+      dependencies:
+        - stage: "dot"
+          artifacts:
+            - telemetry_logs.json
+            - incident_reports.json
+            - deployment_summary.json
+      
+      agents:
+        - agent_id: "cia"
+          name: "Continuous Improvement Agent"
+          role: "Analyze and improve"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - analytics_tools
+          tasks:
+            - "Analyze success metrics"
+            - "Identify patterns"
+            - "Measure velocity"
+            - "Track quality"
+            - "Output improvement_recommendations.json"
+          
+        - agent_id: "kca"
+          name: "Knowledge Curator Agent"
+          role: "Curate knowledge base"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - knowledge_tools
+          tasks:
+            - "Extract learnings"
+            - "Update best practices"
+            - "Index patterns"
+            - "Create templates"
+            - "Output updated_knowledge_base/"
+          
+        - agent_id: "poa2"
+          name: "Prompt Optimization Agent"
+          role: "Optimize prompts"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - prompt_engineering
+          tasks:
+            - "Analyze agent performance"
+            - "Identify suboptimal outputs"
+            - "Refine instructions"
+            - "Test improvements"
+            - "Output updated_prompts.yaml"
+          
+        - agent_id: "mea"
+          name: "Model Evaluation Agent"
+          role: "Evaluate models"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - evaluation_tools
+          tasks:
+            - "Track model performance"
+            - "Compare models"
+            - "Optimize cost"
+            - "Recommend upgrades"
+            - "Output model_evaluation_report.json"
+          
+        - agent_id: "gva"
+          name: "Governance Agent"
+          role: "Ensure compliance"
+          model: "claude-opus-4"
+          tools:
+            - reasoning
+            - compliance_tools
+          tasks:
+            - "Verify ethical practices"
+            - "Ensure data privacy"
+            - "Check licensing"
+            - "Audit decisions"
+            - "Output governance_report.json"
+          
+        - agent_id: "rga"
+          name: "Report Generator Agent"
+          role: "Generate reports"
+          model: "claude-sonnet-4-5"
+          tools:
+            - reasoning
+            - reporting_tools
+          tasks:
+            - "Aggregate insights"
+            - "Create summaries"
+            - "Generate trend analysis"
+            - "Produce recommendations"
+            - "Output comprehensive_report.md"
+          
+        - agent_id: "ila"
+          name: "Improvement Lead Agent"
+          role: "Lead improvements"
+          model: "claude-opus-4"
+          is_leader: true
+          tools:
+            - reasoning
+            - decision_tools
+          tasks:
+            - "Synthesize recommendations"
+            - "Prioritize improvements"
+            - "Decide implementations"
+            - "Provide feedback to teams"
+            - "Determine workflow continuation"
+      
+      outputs:
+        - improvement_recommendations.json
+        - updated_knowledge_base/
+        - updated_prompts.yaml
+        - model_evaluation_report.json
+        - governance_report.json
+        - comprehensive_report.md
+        - feedback.json
+      
+      success_criteria:
+        - "All insights captured"
+        - "Knowledge base updated"
+        - "Improvements documented"
+      
+      loop_condition:
+        field: "feedback.improvement_needed"
+        condition: "== true"
+        action: "restart_from_stage"
+        target_stage: "pdt"
+        max_loops: 3
+
+  # ==================== WORKFLOW METADATA ====================
+  metadata:
+    total_agents: 30
+    total_teams: 5
+    estimated_duration_minutes: 45
+    resource_requirements:
+      cpu: "4 cores"
+      memory: "16 GB"
+      storage: "50 GB"
+    
+  # ==================== ERROR HANDLING ====================
+  error_handling:
+    strategies:
+      - type: "retry"
+        max_attempts: 3
+        backoff: "exponential"
+      - type: "fallback"
+        fallback_model: "gpt-4o-mini"
+      - type: "human_in_loop"
+        trigger: "critical_failure"
+        enabled: false
+    
+  # ==================== MONITORING ====================
+  monitoring:
+    metrics:
+      - "execution_time"
+      - "success_rate"
+      - "error_rate"
+      - "cost_per_execution"
+      - "quality_score"
+    alerts:
+      - condition: "error_rate > 0.1"
+        action: "notify_admin"
+      - condition: "execution_time > 60"
+        action: "log_warning"

@@ -1,0 +1,49 @@
+# Core AI Agent Framework
+agno
+anthropic
+openai
+
+# Web Framework
+streamlit
+fastapi
+uvicorn
+
+# Database
+sqlalchemy
+# sqlite3  # Built-in Python module
+
+# Tools and Utilities
+python-dotenv
+pydantic
+httpx
+aiohttp
+
+# Code Quality
+ruff
+black
+mypy
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+
+# Documentation
+mkdocs
+mkdocs-material
+
+# Data Processing
+pandas
+numpy
+
+# File Handling
+python-multipart
+aiofiles
+
+# Monitoring and Logging
+loguru
+prometheus-client
+
+# Development Tools
+jupyter
+ipython
