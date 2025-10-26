@@ -24,9 +24,7 @@ from agno.team import Team
 from agno.workflow import Workflow, Step, StepInput, StepOutput, Loop, Parallel, Condition
 from agno.models.anthropic import Claude
 from agno.db.sqlite import SqliteDb
-from agno.storage import AgentStorage
-from agno.knowledge import AgentKnowledge
-from agno.memory import AgentMemory
+from agno.knowledge import Knowledge
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.python import PythonTools
 from agno.tools.file import FileTools
@@ -168,7 +166,7 @@ class ProductDefinitionTeam:
             ],
             role="Transform user requirements into comprehensive technical specifications",
             model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=AgentStorage(db_file=SystemConfig.DB_FILE, table_name="pdt_sessions"),
+            storage=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, table_name="pdt_sessions"),
             instructions=[
                 "Coordinate all agents to create complete product specifications",
                 "Ensure all aspects are covered: UX, architecture, APIs, security",
@@ -331,7 +329,7 @@ class DevelopmentTeam:
             ],
             role="Build complete, production-ready full-stack application",
             model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=AgentStorage(db_file=SystemConfig.DB_FILE, table_name="dt_sessions"),
+            storage=SqliteDb(id="dt_db", db_file=SystemConfig.DB_FILE, table_name="dt_sessions"),
             instructions=[
                 "Implement complete application from specifications",
                 "Ensure high code quality and maintainability",
@@ -473,7 +471,7 @@ class QualitySecurityTeam:
             ],
             role="Ensure application quality, security, and reliability",
             model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=AgentStorage(db_file=SystemConfig.DB_FILE, table_name="qst_sessions"),
+            storage=SqliteDb(id="qst_db", db_file=SystemConfig.DB_FILE, table_name="qst_sessions"),
             instructions=[
                 "Perform comprehensive testing and security audits",
                 "Ensure application meets quality standards",
@@ -625,7 +623,7 @@ class DeploymentOperationsTeam:
             ],
             role="Deploy and operate application in production",
             model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=AgentStorage(db_file=SystemConfig.DB_FILE, table_name="dot_sessions"),
+            storage=SqliteDb(id="dot_db", db_file=SystemConfig.DB_FILE, table_name="dot_sessions"),
             instructions=[
                 "Deploy application safely to production",
                 "Ensure system reliability and availability",
@@ -667,8 +665,8 @@ class ContinuousImprovementTeam:
             role="Curate and update organizational knowledge base",
             model=Claude(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
-            knowledge=AgentKnowledge(
-                vector_db=SqliteDb(db_file=SystemConfig.KNOWLEDGE_DB)
+            knowledge=Knowledge(
+                db=SqliteDb(id="cit_db_know", db_file=SystemConfig.DB_FILE, session_table="cit_sessions"),
             ),
             instructions=[
                 "Extract learnings from project execution",
@@ -778,7 +776,7 @@ class ContinuousImprovementTeam:
             ],
             role="Drive continuous improvement and learning",
             model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=AgentStorage(db_file=SystemConfig.DB_FILE, table_name="cit_sessions"),
+            storage=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, table_name="cit_sessions"),
             instructions=[
                 "Learn from every project execution",
                 "Continuously improve system capabilities",
