@@ -18,18 +18,21 @@ from typing import Dict, Any, List, Iterator
 from pathlib import Path
 import json
 from datetime import datetime
+from dotenv import load_dotenv
 
 from agno.agent import Agent, RunOutput, RunOutputEvent, RunEvent
 from agno.team import Team
 from agno.workflow import Workflow, Step, StepInput, StepOutput, Loop, Parallel, Condition
-from agno.models.anthropic import Claude
+from agno.models.google import Gemini
 from agno.db.sqlite import SqliteDb
 from agno.knowledge import Knowledge
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.python import PythonTools
 from agno.tools.file import FileTools
 from agno.tools.reasoning import ReasoningTools
+from agno.vectordb.lancedb import LanceDb
 
+load_dotenv()
 
 # ==================== CONFIGURATION ====================
 class SystemConfig:
@@ -40,9 +43,9 @@ class SystemConfig:
     KNOWLEDGE_DB = "fullstack_knowledge.db"
     
     # Model Configuration
-    PRIMARY_MODEL = "claude-sonnet-4-5"
-    FAST_MODEL = "gpt-4o-mini"
-    REASONING_MODEL = "claude-opus-4"
+    PRIMARY_MODEL = "gemini-2.5-flash-lite"
+    FAST_MODEL = "gemini-2.5-flash-lite"
+    REASONING_MODEL = "gemini-2.5-flash-lite"
     
     # Storage Paths
     ARTIFACTS_DIR = Path("artifacts")
@@ -72,7 +75,7 @@ class ProductDefinitionTeam:
         spec_intake_agent = Agent(
             name="Spec Intake Agent",
             role="Parse and structure user requirements into formal specifications",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Parse user requirements comprehensively",
@@ -89,7 +92,7 @@ class ProductDefinitionTeam:
         domain_expert_agent = Agent(
             name="Domain Expert Agent",
             role="Enrich specifications with domain-specific best practices",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), DuckDuckGoTools()],
             instructions=[
                 "Analyze the application domain",
@@ -105,7 +108,7 @@ class ProductDefinitionTeam:
         ux_research_agent = Agent(
             name="UX Research Agent",
             role="Design user experience and interface structure",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), DuckDuckGoTools()],
             instructions=[
                 "Create user journey maps",
@@ -122,7 +125,7 @@ class ProductDefinitionTeam:
         system_design_agent = Agent(
             name="System Design Agent",
             role="Create comprehensive system architecture",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Design microservices/monolithic architecture as appropriate",
@@ -140,7 +143,7 @@ class ProductDefinitionTeam:
         product_architect_agent = Agent(
             name="Product Architect Agent",
             role="Finalize and validate complete product specification",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Review all specifications for completeness",
@@ -165,8 +168,8 @@ class ProductDefinitionTeam:
                 product_architect_agent
             ],
             role="Transform user requirements into comprehensive technical specifications",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, table_name="pdt_sessions"),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
+            db=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, session_table="pdt_sessions"),
             instructions=[
                 "Coordinate all agents to create complete product specifications",
                 "Ensure all aspects are covered: UX, architecture, APIs, security",
@@ -190,7 +193,7 @@ class DevelopmentTeam:
         database_agent = Agent(
             name="Database Agent",
             role="Design and implement database schema and ORM models",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools(), FileTools()],
             instructions=[
                 "Create database schema from specifications",
@@ -207,7 +210,7 @@ class DevelopmentTeam:
         backend_engineer_agent = Agent(
             name="Backend Engineer Agent",
             role="Build robust backend services and APIs",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools(), FileTools()],
             instructions=[
                 "Implement RESTful/GraphQL APIs",
@@ -226,7 +229,7 @@ class DevelopmentTeam:
         frontend_engineer_agent = Agent(
             name="Frontend Engineer Agent",
             role="Build modern, responsive frontend applications",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Implement React/Vue/Svelte components",
@@ -245,7 +248,7 @@ class DevelopmentTeam:
         integration_agent = Agent(
             name="Integration Agent",
             role="Integrate frontend, backend, and external services",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools(), FileTools()],
             instructions=[
                 "Connect frontend to backend APIs",
@@ -263,7 +266,7 @@ class DevelopmentTeam:
         infrastructure_agent = Agent(
             name="Infrastructure Agent",
             role="Create deployment infrastructure and configurations",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Create Dockerfile for containerization",
@@ -281,7 +284,7 @@ class DevelopmentTeam:
         performance_optimization_agent = Agent(
             name="Performance Optimization Agent",
             role="Optimize application performance and resource usage",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools()],
             instructions=[
                 "Profile application performance",
@@ -300,7 +303,7 @@ class DevelopmentTeam:
         dev_lead_agent = Agent(
             name="Development Lead Agent",
             role="Orchestrate development team and ensure code quality",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Coordinate all development agents",
@@ -328,8 +331,8 @@ class DevelopmentTeam:
                 dev_lead_agent
             ],
             role="Build complete, production-ready full-stack application",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=SqliteDb(id="dt_db", db_file=SystemConfig.DB_FILE, table_name="dt_sessions"),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
+            db=SqliteDb(id="dt_db", db_file=SystemConfig.DB_FILE, session_table="dt_sessions"),
             instructions=[
                 "Implement complete application from specifications",
                 "Ensure high code quality and maintainability",
@@ -353,7 +356,7 @@ class QualitySecurityTeam:
         code_review_agent = Agent(
             name="Code Review Agent",
             role="Perform comprehensive code review and quality analysis",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools(), FileTools()],
             instructions=[
                 "Perform static code analysis",
@@ -371,7 +374,7 @@ class QualitySecurityTeam:
         test_qa_agent = Agent(
             name="Test & QA Agent",
             role="Create and execute comprehensive test suites",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools(), FileTools()],
             instructions=[
                 "Generate unit tests (Pytest/Jest)",
@@ -389,7 +392,7 @@ class QualitySecurityTeam:
         security_agent = Agent(
             name="Security Agent",
             role="Perform security audits and vulnerability scanning",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Perform SAST (Static Application Security Testing)",
@@ -408,7 +411,7 @@ class QualitySecurityTeam:
         load_testing_agent = Agent(
             name="Load Testing Agent",
             role="Perform load and stress testing",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), PythonTools()],
             instructions=[
                 "Create load testing scripts (Locust/K6)",
@@ -426,7 +429,7 @@ class QualitySecurityTeam:
         observability_agent = Agent(
             name="Observability Agent",
             role="Implement monitoring and observability",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Add structured logging (JSON format)",
@@ -444,7 +447,7 @@ class QualitySecurityTeam:
         qa_lead_agent = Agent(
             name="QA Lead Agent",
             role="Oversee quality assurance and make go/no-go decisions",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Review all test and security reports",
@@ -470,8 +473,8 @@ class QualitySecurityTeam:
                 qa_lead_agent
             ],
             role="Ensure application quality, security, and reliability",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=SqliteDb(id="qst_db", db_file=SystemConfig.DB_FILE, table_name="qst_sessions"),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
+            db=SqliteDb(id="qst_db", db_file=SystemConfig.DB_FILE, session_table="qst_sessions"),
             instructions=[
                 "Perform comprehensive testing and security audits",
                 "Ensure application meets quality standards",
@@ -494,7 +497,7 @@ class DeploymentOperationsTeam:
         env_provisioning_agent = Agent(
             name="Environment Provisioning Agent",
             role="Provision and configure cloud infrastructure",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Provision cloud resources (AWS/GCP/Azure)",
@@ -511,7 +514,7 @@ class DeploymentOperationsTeam:
         cicd_agent = Agent(
             name="CI/CD Pipeline Agent",
             role="Create and manage deployment pipelines",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Create GitHub Actions/GitLab CI pipelines",
@@ -528,7 +531,7 @@ class DeploymentOperationsTeam:
         release_manager_agent = Agent(
             name="Release Manager Agent",
             role="Manage application releases and deployments",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Execute deployment to staging environment",
@@ -545,7 +548,7 @@ class DeploymentOperationsTeam:
         monitoring_agent = Agent(
             name="Monitoring Agent",
             role="Monitor application health and performance",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Monitor application metrics",
@@ -562,7 +565,7 @@ class DeploymentOperationsTeam:
         rollback_agent = Agent(
             name="Rollback Agent",
             role="Handle deployment rollbacks and recovery",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Detect deployment failures",
@@ -579,7 +582,7 @@ class DeploymentOperationsTeam:
         incident_response_agent = Agent(
             name="Incident Response Agent",
             role="Handle production incidents and issues",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Detect and classify incidents",
@@ -596,7 +599,7 @@ class DeploymentOperationsTeam:
         ops_lead_agent = Agent(
             name="Operations Lead Agent",
             role="Oversee deployment operations and system reliability",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Coordinate all deployment activities",
@@ -622,8 +625,8 @@ class DeploymentOperationsTeam:
                 ops_lead_agent
             ],
             role="Deploy and operate application in production",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=SqliteDb(id="dot_db", db_file=SystemConfig.DB_FILE, table_name="dot_sessions"),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
+            db=SqliteDb(id="dot_db", db_file=SystemConfig.DB_FILE, session_table="dot_sessions"),
             instructions=[
                 "Deploy application safely to production",
                 "Ensure system reliability and availability",
@@ -646,7 +649,7 @@ class ContinuousImprovementTeam:
         ci_agent = Agent(
             name="Continuous Improvement Agent",
             role="Analyze system performance and identify improvements",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Analyze deployment success/failure rates",
@@ -663,10 +666,13 @@ class ContinuousImprovementTeam:
         knowledge_curator_agent = Agent(
             name="Knowledge Curator Agent",
             role="Curate and update organizational knowledge base",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             knowledge=Knowledge(
-                db=SqliteDb(id="cit_db_know", db_file=SystemConfig.DB_FILE, session_table="cit_sessions"),
+                vector_db=LanceDb(
+                    table_name="cit_knowledge",
+                    uri="tmp/lancedb"
+                ),
             ),
             instructions=[
                 "Extract learnings from project execution",
@@ -683,7 +689,7 @@ class ContinuousImprovementTeam:
         prompt_optimization_agent = Agent(
             name="Prompt Optimization Agent",
             role="Optimize agent instructions and prompts",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Analyze agent performance logs",
@@ -700,7 +706,7 @@ class ContinuousImprovementTeam:
         model_evaluation_agent = Agent(
             name="Model Evaluation Agent",
             role="Evaluate and optimize model selection",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools()],
             instructions=[
                 "Track model performance metrics",
@@ -716,7 +722,7 @@ class ContinuousImprovementTeam:
         governance_agent = Agent(
             name="Governance Agent",
             role="Ensure compliance and ethical AI practices",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Verify ethical AI practices",
@@ -733,7 +739,7 @@ class ContinuousImprovementTeam:
         report_generator_agent = Agent(
             name="Report Generator Agent",
             role="Generate comprehensive improvement reports",
-            model=Claude(id=SystemConfig.PRIMARY_MODEL),
+            model=Gemini(id=SystemConfig.PRIMARY_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Aggregate all improvement insights",
@@ -749,7 +755,7 @@ class ContinuousImprovementTeam:
         improvement_lead_agent = Agent(
             name="Improvement Lead Agent",
             role="Lead continuous improvement initiatives",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
             tools=[ReasoningTools(), FileTools()],
             instructions=[
                 "Synthesize all improvement recommendations",
@@ -775,8 +781,8 @@ class ContinuousImprovementTeam:
                 improvement_lead_agent
             ],
             role="Drive continuous improvement and learning",
-            model=Claude(id=SystemConfig.REASONING_MODEL),
-            storage=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, table_name="cit_sessions"),
+            model=Gemini(id=SystemConfig.REASONING_MODEL),
+            db=SqliteDb(id="pdt_db", db_file=SystemConfig.DB_FILE, session_table="cit_sessions"),
             instructions=[
                 "Learn from every project execution",
                 "Continuously improve system capabilities",
@@ -786,6 +792,14 @@ class ContinuousImprovementTeam:
             markdown=True
         )
 
+def qa_passed(step_input: StepInput) -> bool:
+    """Evaluator for QA condition"""
+    output = step_input.previous_step_content
+    if isinstance(output, str):
+        return "PASS" in output.upper()
+    elif isinstance(output, dict):
+        return output.get("status", "").upper() == "PASS"
+    return False
 
 # ==================== MAIN WORKFLOW ORCHESTRATOR ====================
 class AutonomousFullStackFactory:
@@ -814,37 +828,35 @@ class AutonomousFullStackFactory:
             steps=[
                 Step(
                     name="Product Definition",
-                    executor=self.pdt,
+                    team=self.pdt,
                     description="Transform requirements into technical specifications"
                 ),
                 Step(
                     name="Development",
-                    executor=self.dt,
+                    team=self.dt,
                     description="Build complete full-stack application"
                 ),
                 Step(
                     name="Quality Assurance",
-                    executor=self.qst,
+                    team=self.qst,
                     description="Test and validate application"
                 ),
                 # Conditional deployment based on QA results
                 Condition(
-                    condition=lambda output: self._check_qa_pass(output),
-                    if_true=Step(
-                        name="Deployment",
-                        executor=self.dot,
-                        description="Deploy to production"
-                    ),
-                    if_false=Step(
-                        name="Return to Development",
-                        executor=lambda input: StepOutput(
-                            content="QA Failed. Returning to Development Team with feedback."
+                    name="QA_Pass_Condition",
+                    description="Check if QA passed before deployment",
+                    evaluator=qa_passed,
+                    steps=[
+                        Step(
+                            name="Deployment",
+                            team=self.dot,
+                            description="Deploy to production"
                         )
-                    )
+                    ]
                 ),
                 Step(
                     name="Continuous Improvement",
-                    executor=self.cit,
+                    team=self.cit,
                     description="Analyze and improve system"
                 )
             ]
