@@ -1,0 +1,13 @@
+{
+  "project_id": "demo_project_001",
+  "timestamp": "2025-10-29T14:23:37.924862Z",
+  "readiness_score": 1,
+  "breakdown": {
+    "spec_completeness": 50,
+    "ux_coverage": 50,
+    "sda_readiness": 50,
+    "acceptance_test_coverage": 50,
+    "security_compliance": 50
+  },
+  "notes": "Auto-generated audit because agent did not save an audit file."
+}

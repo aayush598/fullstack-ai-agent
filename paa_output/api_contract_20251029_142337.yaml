@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "project_id": "demo_project_001",
+    "version": "1.0.0",
+    "created_by": "PAA_fallback",
+    "model": "gemini-2.5-flash-lite",
+    "timestamp": "2025-10-29T14:23:55.052750Z"
+  },
+  "note": "Fallback minimal API contract; agent did not produce a final contract.",
+  "endpoints": [
+    {
+      "path": "/health",
+      "method": "GET",
+      "description": "Health check"
+    }
+  ]
+}
