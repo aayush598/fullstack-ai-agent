@@ -7,3 +7,4 @@ projects
 tmp
 *.db
 sia_output
+uxra_output
