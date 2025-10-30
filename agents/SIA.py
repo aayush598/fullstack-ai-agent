@@ -30,8 +30,8 @@ class SIAConfig:
     MODEL = "gemini-2.5-flash-lite"
     
     # Storage Paths
-    OUTPUT_DIR = Path("sia_output")
-    DB_FILE = "sia_agent.db"
+    OUTPUT_DIR = Path("output/sia_output")
+    DB_FILE = "database/sia_agent.db"
     
     # Debug Settings
     DEBUG_MODE = True
