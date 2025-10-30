@@ -1,395 +1,577 @@
 """
-System Design Agent (SDA)
-Production-capable implementation using the Agno Framework
-
-This agent consumes a structured product specification (product_spec.json)
-and a UX blueprint (optional) and produces system design artifacts:
-- system_architecture_<timestamp>.yaml
-- component_list_<timestamp>.md
-- data_model_summary_<timestamp>.yaml
-- api_boundary_map_<timestamp>.yaml
-- scalability_plan_<timestamp>.md
-- resiliency_plan_<timestamp>.md
-- security_surface_<timestamp>.md
-- handoff_manifest_<timestamp>.json
-- sda_audit_<timestamp>.json
-
-The agent streams progress, writes artifacts via FileTools.save_file,
-records provenance via SqliteDb, and emits a JSON summary on completion.
+System Design Agent (SDA) — Multi-Prompt Architecture
+FULL ENTERPRISE VERSION - FIXED v2
 """
 
 import os
 import json
+import glob
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+import re
 
-from agno.agent import Agent, RunOutput, RunOutputEvent, RunEvent
+from dotenv import load_dotenv
+from agno.agent import Agent, RunOutput
 from agno.models.google import Gemini
 from agno.db.sqlite import SqliteDb
-from agno.tools.reasoning import ReasoningTools
 from agno.tools.file import FileTools
 
+# --------------------------------------------------------------------
+# CONFIG
+# --------------------------------------------------------------------
 load_dotenv()
 
-# -------------------- CONFIGURATION --------------------
+
 class SDAConfig:
     MODEL = os.getenv("SDA_MODEL", "gemini-2.5-flash-lite")
-    OUTPUT_DIR = Path("sda_output")
-    DB_FILE = "sda_agent.db"
-    DEBUG_MODE = True
-    DEBUG_LEVEL = 2
+    OUTPUT_DIR = Path("output/sda_output")
+    PROMPT_DIR = Path("prompts/SDA")
+    DB_FILE = "database/sda_agent.db"
 
     @classmethod
     def setup(cls):
         cls.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"✅ SDA output directory: {cls.OUTPUT_DIR}")
+        cls.PROMPT_DIR.mkdir(parents=True, exist_ok=True)
+        Path("database").mkdir(parents=True, exist_ok=True)
 
-# -------------------- SYSTEM DESIGN AGENT --------------------
+
+SDAConfig.setup()
+
+
+# --------------------------------------------------------------------
+# LOAD PROMPTS
+# --------------------------------------------------------------------
+def load_prompts():
+    """Load all prompt files from PROMPT_DIR"""
+    prompts = {}
+    prompt_files = glob.glob(str(SDAConfig.PROMPT_DIR / "*.txt"))
+    
+    if not prompt_files:
+        print(f"⚠️  Warning: No prompt files found in {SDAConfig.PROMPT_DIR}")
+        print("Creating sample prompts...")
+        create_sample_prompts()
+        prompt_files = glob.glob(str(SDAConfig.PROMPT_DIR / "*.txt"))
+    
+    for p in prompt_files:
+        key = Path(p).stem  # filename without extension
+        with open(p, "r", encoding="utf-8") as f:
+            prompts[key] = f.read()
+    
+    return prompts
+
+
+def create_sample_prompts():
+    """Create sample prompt files if they don't exist"""
+    sample_prompts = {
+        "system_architecture": """You are a system architecture expert. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a comprehensive YAML document describing the system architecture including:
+- Components and their responsibilities
+- Communication patterns
+- Technology recommendations
+- Deployment considerations
+
+Format the output as valid YAML. Do not include markdown code fences or backticks.""",
+
+        "component_list": """You are a technical architect. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a detailed Markdown document listing all system components including:
+- Component name and purpose
+- Key responsibilities
+- Dependencies
+- Technology stack recommendations
+
+Format the output as Markdown with clear sections.""",
+
+        "data_model": """You are a database architect. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a comprehensive YAML document describing the data model including:
+- Entity definitions
+- Relationships
+- Key attributes
+- Indexing strategy
+
+Format the output as valid YAML. Do not include markdown code fences or backticks.""",
+
+        "api_boundary": """You are an API architect. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a comprehensive YAML document describing API boundaries including:
+- Service endpoints
+- Request/response formats
+- Authentication/authorization
+- Rate limiting
+
+Format the output as valid YAML. Do not include markdown code fences or backticks.""",
+
+        "scalability": """You are a scalability expert. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a detailed Markdown document describing the scalability plan including:
+- Horizontal and vertical scaling strategies
+- Load balancing approaches
+- Caching strategies
+- Performance optimization
+
+Format the output as Markdown.""",
+
+        "resiliency": """You are a reliability engineer. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a detailed Markdown document describing the resiliency plan including:
+- Fault tolerance mechanisms
+- Disaster recovery
+- Backup strategies
+- Monitoring and alerting
+
+Format the output as Markdown.""",
+
+        "security": """You are a security architect. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a detailed Markdown document describing the security surface including:
+- Authentication and authorization
+- Data encryption
+- API security
+- Compliance considerations
+
+Format the output as Markdown.""",
+
+        "handoff": """You are a technical documentation expert. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a JSON manifest for handoff to development team. The JSON should include:
+- project_overview: Brief description of the project
+- deliverables: List of key deliverables
+- technical_decisions: Key technical decisions made
+- next_steps: Recommended next steps
+
+Output ONLY valid JSON. Do not include markdown code fences, backticks, or any other formatting. Start directly with the opening brace.""",
+
+        "audit": """You are a technical auditor. Based on the following product specification:
+
+{spec}
+
+UX Blueprint (if available):
+{ux}
+
+Metadata:
+{meta}
+
+Generate a JSON audit report. The JSON should include:
+- completeness_check: Assessment of specification completeness
+- technical_feasibility: Evaluation of technical feasibility
+- risk_assessment: Identified risks and mitigation strategies
+- recommendations: Key recommendations
+
+Output ONLY valid JSON. Do not include markdown code fences, backticks, or any other formatting. Start directly with the opening brace."""
+    }
+    
+    for key, content in sample_prompts.items():
+        filepath = SDAConfig.PROMPT_DIR / f"{key}.txt"
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    
+    print(f"✓ Created {len(sample_prompts)} sample prompts in {SDAConfig.PROMPT_DIR}")
+
+
+ARTIFACT_PROMPTS = load_prompts()
+
+# Artifact filename templates
+ARTIFACT_MAP = {
+    "system_architecture": "system_architecture_{ts}.yaml",
+    "component_list": "component_list_{ts}.md",
+    "data_model": "data_model_summary_{ts}.yaml",
+    "api_boundary": "api_boundary_map_{ts}.yaml",
+    "scalability": "scalability_plan_{ts}.md",
+    "resiliency": "resiliency_plan_{ts}.md",
+    "security": "security_surface_{ts}.md",
+    "handoff": "handoff_manifest_{ts}.json",
+    "audit": "sda_audit_{ts}.json"
+}
+
+
+# --------------------------------------------------------------------
+# UTILITY FUNCTIONS
+# --------------------------------------------------------------------
+def clean_llm_output(content: str, expected_format: str = "text") -> str:
+    """
+    Clean LLM output by removing markdown code fences and extra whitespace
+    
+    Args:
+        content: Raw LLM output
+        expected_format: Expected format (json, yaml, markdown, text)
+        
+    Returns:
+        Cleaned content
+    """
+    if not content:
+        return ""
+    
+    # Remove markdown code fences
+    # Pattern: ```json\n{...}\n``` or ```yaml\n...\n``` or ```\n...\n```
+    content = re.sub(r'^```(?:json|yaml|markdown|md)?\s*\n', '', content.strip(), flags=re.MULTILINE)
+    content = re.sub(r'\n```\s*$', '', content.strip(), flags=re.MULTILINE)
+    
+    # For JSON, validate and potentially fix
+    if expected_format == "json":
+        content = content.strip()
+        # Ensure it starts with { or [
+        if content and content[0] not in ['{', '[']:
+            # Try to find the first { or [
+            start_idx = min(
+                (content.find('{') if content.find('{') != -1 else len(content)),
+                (content.find('[') if content.find('[') != -1 else len(content))
+            )
+            if start_idx < len(content):
+                content = content[start_idx:]
+        
+        # Try to validate JSON
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"⚠️  JSON validation warning: {e}")
+            # Attempt to fix common issues
+            content = content.strip()
+    
+    return content.strip()
+
+
+# --------------------------------------------------------------------
+# SDA AGENT
+# --------------------------------------------------------------------
+def build_llm():
+    """Build the LLM agent for artifact generation"""
+    return Agent(
+        name="SDA-Artifact-Generator",
+        model=Gemini(id=SDAConfig.MODEL),
+        markdown=False,
+        add_history_to_context=False,  # Deterministic per-artifact
+        stream_events=False,
+        debug_mode=False
+    )
+
+
+# --------------------------------------------------------------------
+# MAIN SDA CLASS
+# --------------------------------------------------------------------
 class SystemDesignAgent:
-    """
-    System Design Agent:
-    - Input: structured spec (JSON string) and optionally UX blueprint text
-    - Output: system architecture artifacts saved via FileTools
-    """
+    """System Design Agent for generating comprehensive system design artifacts"""
 
     def __init__(self):
-        SDAConfig.setup()
-        self.agent = self._create_agent()
+        self.llm = build_llm()
+        self.db = SqliteDb(id="sda_db", db_file=SDAConfig.DB_FILE)
+        # Initialize FileTools with base directory
+        self.file_tools = FileTools(base_dir=SDAConfig.OUTPUT_DIR)
 
-    def _create_agent(self) -> Agent:
+    def run_artifact(self, key: str, prompt: str, context: Dict[str, str], ts: str) -> tuple[str, str]:
         """
-        Create and configure the Agno Agent for System Design.
-        Instructions force deterministic outputs and explicit save_file calls.
+        Execute one artifact generation prompt
+        
+        Args:
+            key: Artifact key from ARTIFACT_MAP
+            prompt: The prompt template to use
+            context: Context dictionary with spec, ux, meta
+            ts: Timestamp string
+            
+        Returns:
+            Tuple of (filename, content)
         """
-        instructions = [
-            "You are the **System Design Agent (SDA)** — a senior platform architect.",
-            "",
-            "Your mission: Convert a validated product specification and UX blueprint into a",
-            "comprehensive system design package consisting of multiple artifacts.",
-            "",
-            "### INPUTS",
-            "- You receive a structured product specification (JSON) and an optional UX blueprint.",
-            "",
-            "### DELIVERABLES (MUST SAVE USING save_file(path, content))",
-            "Produce and SAVE the following files (in the sda_output/ directory):",
-            "1) system_architecture_<timestamp>.yaml",
-            "2) component_list_<timestamp>.md",
-            "3) data_model_summary_<timestamp>.yaml",
-            "4) api_boundary_map_<timestamp>.yaml",
-            "5) scalability_plan_<timestamp>.md",
-            "6) resiliency_plan_<timestamp>.md",
-            "7) security_surface_<timestamp>.md",
-            "8) handoff_manifest_<timestamp>.json",
-            "9) sda_audit_<timestamp>.json",
-            "",
-            "### ARTIFACT CONTENT REQUIREMENTS",
-            "- Each artifact must include a `metadata` block with: project_id, version, created_by, model, timestamp.",
-            "- `system_architecture` must list components (id, name, type, responsibilities, persistence, recommended_techs),",
-            "  interactions (from,to,protocol,sync_async,sla_ms_p95), and non-functional requirements.",
-            "- `data_model_summary` should include entities (name, primary_key, fields with types, retention, sensitive flag).",
-            "- `api_boundary_map` should include endpoint path, method, request/response schema stubs, auth_required, rate_limit.",
-            "- `scalability_plan` must cover caching, partitioning, ingestion patterns, and autoscaling recommendations.",
-            "- `resiliency_plan` must specify backups, RTO/RPO, multi-AZ strategies, and rollback guidance.",
-            "- `security_surface` must outline trust boundaries, encryption points, IAM, and special compliance notes.",
-            "- `handoff_manifest` must include artifact pointers, seed data location (or placeholders), acceptance mapping, and handoff_token.",
-            "- `sda_audit` must contain the provenance of major design decisions: sources, prompts, confidence scores.",
-            "",
-            "### OPERATIONAL RULES",
-            "- You MUST call FileTools.save_file(path, content) for each artifact; do not just describe that you saved.",
-            "- If you cannot produce an artifact, save a fallback JSON or text file explaining why, and proceed.",
-            "- All files must be saved under the `sda_output/` directory and named using the timestamp pattern exactly.",
-            "- Include source citations for any template or pattern used (e.g., KB doc ids).",
-            "",
-            "### FINAL OUTPUT",
-            "After saving all artifacts, print a final JSON summary with the following structure:",
-            "```json",
-            "{",
-            "  \"status\": \"completed\",",
-            "  \"saved_files\": { ... },",
-            "  \"scores\": {\"feasibility_index\": 0.82, \"readiness_score\": 0.78},",
-            "  \"handoff_token\": \"...\"",
-            "}",
-            "```",
-            "",
-            "Be deterministic, explicit, and conservative in your recommendations. Avoid hallucinations; cite sources when possible.",
-        ]
-
-        agent = Agent(
-            name="System Design Agent (SDA)",
-            role="Produce system architecture artifacts from structured spec and UX blueprint",
-            model=Gemini(id=SDAConfig.MODEL),
-            tools=[ReasoningTools(), FileTools()],
-            db=SqliteDb(id="sda_db", db_file=SDAConfig.DB_FILE, session_table="sda_sessions"),
-            instructions=instructions,
-            markdown=True,
-            add_history_to_context=True,
-            num_history_runs=3,
-            debug_mode=SDAConfig.DEBUG_MODE,
-            debug_level=SDAConfig.DEBUG_LEVEL,
-            stream_events=True,
-            tool_choice="auto",
-        )
-        return agent
+        filename = ARTIFACT_MAP[key].format(ts=ts)
+        
+        # Fill prompt template using safe string replacement
+        # This avoids issues with curly braces in the prompt
+        filled = prompt
+        for key_name, value in context.items():
+            filled = filled.replace(f"{{{key_name}}}", value)
+        
+        # Run LLM to generate content
+        print(f"📝 Generating {key}...")
+        resp: RunOutput = self.llm.run(filled)
+        
+        # Get raw content
+        raw_content = resp.content.strip() if resp.content else "# EMPTY OUTPUT"
+        
+        # Determine expected format from filename
+        file_ext = Path(filename).suffix.lower()
+        format_map = {
+            ".json": "json",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".md": "markdown"
+        }
+        expected_format = format_map.get(file_ext, "text")
+        
+        # Clean the content
+        content = clean_llm_output(raw_content, expected_format)
+        
+        # Additional validation for JSON
+        if expected_format == "json":
+            try:
+                # Validate and pretty-print JSON
+                parsed = json.loads(content)
+                content = json.dumps(parsed, indent=2)
+            except json.JSONDecodeError as e:
+                print(f"⚠️  JSON validation failed for {key}: {e}")
+                print(f"📄 Raw content preview: {content[:200]}...")
+                # Keep the content as-is but log the error
+        
+        # Save file using FileTools with CORRECT parameter order: (content, filename)
+        try:
+            result = self.file_tools.save_file(content, filename, overwrite=True)
+            print(f"✓ Saved: {result}")
+        except Exception as e:
+            print(f"❌ Error saving {filename}: {e}")
+            # Fallback: save manually
+            filepath = SDAConfig.OUTPUT_DIR / filename
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"✓ Saved (manual): {filepath}")
+        
+        return filename, content
 
     def generate_system_design(
         self,
         product_spec_text: str,
         ux_blueprint_text: Optional[str] = None,
         project_id: Optional[str] = None,
-        version: str = "1.0.0",
-        stream: bool = True,
-        session_id: Optional[str] = None
+        version: str = "1.0.0"
     ) -> Dict[str, Any]:
         """
-        Main entrypoint - generate system design artifacts from a product specification.
-
-        Returns: dict with artifact paths, scores, audit info, and status.
+        Generate comprehensive system design artifacts
+        
+        Args:
+            product_spec_text: Product specification as text or JSON
+            ux_blueprint_text: Optional UX blueprint
+            project_id: Optional project identifier
+            version: Project version
+            
+        Returns:
+            Dictionary with project metadata and artifact paths
         """
-        print("\n" + "=" * 80)
-        print("🚀 SYSTEM DESIGN AGENT - STARTING")
-        print("=" * 80)
-
-        if not session_id:
-            session_id = f"sda_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        ts_iso = datetime.utcnow().isoformat() + "Z"
-        project_id = project_id or f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        # Prepare the prompt with explicit instructions and placeholders
-        prompt = f"""
-You are the System Design Agent (SDA). Use the product_spec and optional ux_blueprint supplied below.
-You must produce and save the mandated artifacts into the sda_output/ directory using save_file(path, content).
-Project metadata:
-- project_id: {project_id}
-- version: {version}
-- timestamp: {ts_iso}
-
-PRODUCT_SPEC:
-{product_spec_text}
-
-UX_BLUEPRINT (optional):
-{ux_blueprint_text or '<none>'}
-
-Follow your instructions exactly — call save_file() for each file.
-After all saves, emit a JSON summary listing saved file paths, scores, and a handoff_token.
-"""
-
-        results: Dict[str, Any] = {
-            "session_id": session_id,
-            "timestamp": ts_iso,
+        # Use timezone-aware datetime (fixes deprecation warning)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts_iso = datetime.now(timezone.utc).isoformat()
+        
+        project_id = project_id or f"project_{ts}"
+        
+        # Create metadata
+        meta = json.dumps({
             "project_id": project_id,
             "version": version,
-            "artifacts": {},
-            "scores": {},
-            "audit": {},
-            "status": "in_progress",
+            "timestamp": ts_iso,
+            "model": SDAConfig.MODEL
+        }, indent=2)
+        
+        # Build context
+        ctx = {
+            "spec": product_spec_text,
+            "ux": ux_blueprint_text or "<none>",
+            "meta": meta
         }
-
-        # names
-        base = f"{timestamp}"
-        filenames = {
-            "system_architecture": f"sda_output/system_architecture_{base}.yaml",
-            "component_list": f"sda_output/component_list_{base}.md",
-            "data_model_summary": f"sda_output/data_model_summary_{base}.yaml",
-            "api_boundary_map": f"sda_output/api_boundary_map_{base}.yaml",
-            "scalability_plan": f"sda_output/scalability_plan_{base}.md",
-            "resiliency_plan": f"sda_output/resiliency_plan_{base}.md",
-            "security_surface": f"sda_output/security_surface_{base}.md",
-            "handoff_manifest": f"sda_output/handoff_manifest_{base}.json",
-            "sda_audit": f"sda_output/sda_audit_{base}.json",
+        
+        results = {
+            "project_id": project_id,
+            "timestamp": ts_iso,
+            "version": version,
+            "model": SDAConfig.MODEL,
+            "artifacts": {}
         }
-
-        try:
-            if stream:
-                print("\n📊 STREAMING AGENT RESPONSE:")
-                print("-" * 80 + "\n")
-                stream_iter = self.agent.run(prompt, stream=True, stream_events=True, session_id=session_id)
-
-                full_content = ""
-                for event in stream_iter:
-                    self._handle_stream_event(event)
-                    if event.event == RunEvent.run_content:
-                        full_content += event.content or ""
-
-                results["raw_content"] = full_content
-                results["status"] = "completed"
-            else:
-                print("\n📊 AGENT PROCESSING (Non-streaming):")
-                print("-" * 80 + "\n")
-                response: RunOutput = self.agent.run(prompt, session_id=session_id)
-                results["raw_content"] = response.content
-                results["run_id"] = response.run_id
-                try:
-                    results["metrics"] = {
-                        "input_tokens": response.metrics.input_tokens or 0,
-                        "output_tokens": response.metrics.output_tokens or 0,
-                        "total_tokens": response.metrics.total_tokens or 0,
-                        "time_seconds": response.metrics.duration or 0,
-                    }
-                except Exception:
-                    results["metrics"] = {}
-                results["status"] = "completed"
-
-            # After agent run, attempt to locate saved files produced by the agent.
-            saved = {}
-            # Look for files with current timestamp suffix; fallback to most recent matching names
-            for key, path_str in filenames.items():
-                p = Path(path_str)
-                if p.exists():
-                    saved[key] = str(p)
-                else:
-                    # fallback search in sda_output directory for the key
-                    candidates = sorted(SDAConfig.OUTPUT_DIR.glob(f"*{key.split('_')[0]}*"), key=lambda p: p.stat().st_mtime)
-                    if candidates:
-                        saved[key] = str(candidates[-1])
-            results["artifacts"] = saved
-
-            # Try to load audit file if present to populate scores and audit info
-            audit_path = saved.get("sda_audit")
-            if audit_path:
-                try:
-                    with open(audit_path, "r", encoding="utf-8") as f:
-                        audit = json.load(f)
-                    results["audit"] = audit
-                    # if audit contains scores, surface them
-                    if isinstance(audit, dict):
-                        if "scores" in audit:
-                            results["scores"] = audit["scores"]
-                except Exception:
-                    pass
-
-            # If no handoff manifest found, generate a minimal placeholder and save it
-            if "handoff_manifest" not in saved or not Path(saved.get("handoff_manifest", "")).exists():
-                handoff = {
-                    "project_id": project_id,
-                    "version": version,
-                    "created_at": ts_iso,
-                    "artifact_pointers": saved,
-                    "notes": "Auto-generated placeholder handoff manifest. Please review artifacts.",
-                    "handoff_token": f"handoff_{project_id}_{base}"
+        
+        print(f"\n{'='*60}")
+        print(f"🚀 Starting System Design Agent")
+        print(f"📦 Project ID: {project_id}")
+        print(f"📅 Timestamp: {ts_iso}")
+        print(f"{'='*60}\n")
+        
+        # Generate all artifacts
+        for key, filename_template in ARTIFACT_MAP.items():
+            prompt = ARTIFACT_PROMPTS.get(key)
+            if not prompt:
+                print(f"⚠️  Warning: Missing prompt file for key: {key}, skipping...")
+                continue
+            
+            try:
+                fname, content = self.run_artifact(key, prompt, ctx, ts)
+                results["artifacts"][key] = {
+                    "filename": fname,
+                    "path": str(SDAConfig.OUTPUT_DIR / fname),
+                    "size": len(content),
+                    "status": "success"
                 }
-                handoff_path = filenames["handoff_manifest"]
-                FileTools().save_file(handoff_path, json.dumps(handoff, indent=2))
-                saved["handoff_manifest"] = handoff_path
-                results["artifacts"] = saved
-
-            # Ensure there is an sda_audit file; if not create a minimal one
-            if "sda_audit" not in saved or not Path(saved.get("sda_audit", "")).exists():
-                audit = {
-                    "project_id": project_id,
-                    "version": version,
-                    "created_at": ts_iso,
-                    "decisions": [],
-                    "scores": results.get("scores", {"feasibility_index": 0.0, "readiness_score": 0.0}),
-                    "notes": "No detailed audit produced by agent. Please inspect artifacts."
+            except Exception as e:
+                print(f"❌ Error generating {key}: {e}")
+                import traceback
+                traceback.print_exc()
+                results["artifacts"][key] = {
+                    "error": str(e),
+                    "status": "failed"
                 }
-                audit_path = filenames["sda_audit"]
-                FileTools().save_file(audit_path, json.dumps(audit, indent=2))
-                saved["sda_audit"] = audit_path
-                results["artifacts"] = saved
-                results["audit"] = audit
-
-            # compute a simple readiness/handoff token
-            handoff_token = f"handoff_{project_id}_{base}"
-            results["handoff_token"] = handoff_token
-            results["status"] = "completed"
-
-            print("\n" + "=" * 80)
-            print("✅ SDA RUN COMPLETE")
-            print("=" * 80 + "\n")
-
-        except Exception as e:
-            results["status"] = "error"
-            results["error"] = str(e)
-            print(f"\n❌ ERROR during SDA run: {e}\n")
-
+        
+        # Build handoff token
+        results["handoff_token"] = f"handoff_{project_id}_{ts}"
+        
+        # Count successes
+        success_count = len([a for a in results['artifacts'].values() if a.get('status') == 'success'])
+        total_count = len(results['artifacts'])
+        
+        print(f"\n{'='*60}")
+        print(f"✅ System Design Agent Complete")
+        print(f"📊 Generated {success_count}/{total_count} artifacts successfully")
+        if success_count < total_count:
+            failed = [k for k, v in results['artifacts'].items() if v.get('status') == 'failed']
+            print(f"❌ Failed: {', '.join(failed)}")
+        print(f"{'='*60}\n")
+        
         return results
 
-    def _handle_stream_event(self, event: RunOutputEvent):
-        """
-        Handle streaming events to provide visibility (mirrors UXRA/SIA handlers).
-        """
-        if event.event == RunEvent.run_started:
-            print(f"🎬 Run Started - ID: {event.run_id} (Session: {event.session_id})\n")
-
-        elif event.event == RunEvent.run_content:
-            print(event.content or "", end="", flush=True)
-
-        elif event.event == RunEvent.tool_call_started:
-            print("\n🔧 TOOL CALL STARTED")
-            print(f"   Tool: {event.tool_name}")
-            if hasattr(event, "function_name"):
-                print(f"   Function: {event.function_name}")
-            if hasattr(event, "tool_args") and event.tool_args:
-                try:
-                    print("   Args:", json.dumps(event.tool_args, indent=2))
-                except Exception:
-                    print("   Args: (non-serializable)")
-
-        elif event.event == RunEvent.tool_call_completed:
-            print("\n✅ TOOL CALL COMPLETED")
-            print(f"   Tool: {event.tool_name}")
-            if hasattr(event, "tool_result"):
-                preview = str(event.tool_result)[:300]
-                print("   Result preview:", preview, "...\n")
-
-        elif event.event == RunEvent.reasoning_started:
-            print("\n🧠 Reasoning started\n")
-
-        elif event.event == RunEvent.reasoning_step:
-            print(f"💭 Reasoning step: {event.content}\n")
-
-        elif event.event == RunEvent.reasoning_completed:
-            print("\n✅ Reasoning completed\n")
-
-        elif event.event == RunEvent.run_completed:
-            print("\n🏁 Run completed\n")
-            if hasattr(event, "metrics"):
-                print("Metrics:", event.metrics, "\n")
-
     def interactive_cli(self):
-        """
-        Simple CLI: paste product_spec JSON + optional UX text, then run the agent.
-        """
-        print("\n=== System Design Agent - Interactive Mode ===\n")
-        print("Paste your product_spec JSON (end with an empty line). Type 'exit' to quit.\n")
-
-        buffer_lines = []
-        print("Enter product spec:")
+        """Interactive CLI mode for the agent"""
+        print("\n🤖 System Design Agent - Interactive Mode")
+        print("=" * 60)
+        
         while True:
-            line = input()
-            if line.strip().lower() in ("exit", "quit"):
+            print("\nOptions:")
+            print("1. Generate from inline spec")
+            print("2. Generate from file")
+            print("3. Exit")
+            
+            choice = input("\nSelect option (1-3): ").strip()
+            
+            if choice == "1":
+                print("\nEnter product spec (JSON format, Ctrl+D when done):")
+                lines = []
+                try:
+                    while True:
+                        line = input()
+                        lines.append(line)
+                except EOFError:
+                    pass
+                
+                spec_text = "\n".join(lines)
+                result = self.generate_system_design(product_spec_text=spec_text)
+                print("\n📊 Result Summary:")
+                print(json.dumps(result, indent=2))
+            
+            elif choice == "2":
+                spec_path = input("Enter product spec file path: ").strip()
+                ux_path = input("Enter UX blueprint file path (or press Enter to skip): ").strip()
+                
+                try:
+                    with open(spec_path, "r", encoding="utf-8") as f:
+                        spec_text = f.read()
+                    
+                    ux_text = None
+                    if ux_path:
+                        with open(ux_path, "r", encoding="utf-8") as f:
+                            ux_text = f.read()
+                    
+                    result = self.generate_system_design(
+                        product_spec_text=spec_text,
+                        ux_blueprint_text=ux_text
+                    )
+                    print("\n📊 Result Summary:")
+                    print(json.dumps(result, indent=2))
+                except FileNotFoundError as e:
+                    print(f"❌ Error: {e}")
+            
+            elif choice == "3":
+                print("👋 Goodbye!")
                 break
-            if line.strip() == "":
-                if buffer_lines:
-                    spec_text = "\n".join(buffer_lines)
-                    print("\nRunning SDA on provided spec...\n")
-                    res = self.generate_system_design(spec_text, stream=True)
-                    print(json.dumps(res, indent=2))
-                    buffer_lines = []
-                    print("\nYou can paste another spec or type 'exit' to quit.\n")
-                else:
-                    continue
             else:
-                buffer_lines.append(line)
+                print("❌ Invalid option")
+
 
 # -------------------- USAGE EXAMPLES --------------------
 def example_run_from_file(spec_path: str, ux_path: Optional[str] = None):
+    """Example: Generate system design from file inputs"""
     sda = SystemDesignAgent()
+    
+    # Load product spec
     with open(spec_path, "r", encoding="utf-8") as f:
         spec_text = f.read()
+    
+    # Load UX blueprint if available
     ux_text = None
     if ux_path:
         with open(ux_path, "r", encoding="utf-8") as f:
             ux_text = f.read()
-    result = sda.generate_system_design(spec_text, ux_blueprint_text=ux_text, stream=True)
-    print("\n=== RESULT SUMMARY ===")
+    
+    # Generate system design artifacts
+    result = sda.generate_system_design(
+        product_spec_text=spec_text,
+        ux_blueprint_text=ux_text
+    )
+    
+    print("\n📊 RESULT SUMMARY")
     print(json.dumps(result, indent=2))
 
+
 def example_simple_inline():
+    """Example: Generate system design from inline spec"""
     sda = SystemDesignAgent()
+    
+    # Sample product spec (inline mode)
     sample_spec = json.dumps({
         "project_meta": {
             "project_id": "sample_proj_001",
@@ -397,30 +579,81 @@ def example_simple_inline():
             "description": "Manage applications, schedule interviews, and track hires."
         },
         "features": [
-            {"id": "F-001", "name": "Candidate Dashboard", "description": "View candidate status"},
-            {"id": "F-002", "name": "Interview Scheduler", "description": "Schedule interviews with slots"}
+            {
+                "id": "F-001",
+                "name": "Candidate Dashboard",
+                "description": "View candidate status and application history"
+            },
+            {
+                "id": "F-002",
+                "name": "Interview Scheduler",
+                "description": "Schedule interviews with available time slots"
+            },
+            {
+                "id": "F-003",
+                "name": "Application Tracking",
+                "description": "Track application status through the hiring pipeline"
+            }
         ],
         "users": [
-            {"role": "Recruiter", "goals": ["Manage candidates", "Schedule interviews"]},
-            {"role": "Candidate", "goals": ["Apply to jobs", "View status"]}
+            {
+                "role": "Recruiter",
+                "goals": ["Manage candidates", "Schedule interviews", "Track hiring metrics"]
+            },
+            {
+                "role": "Candidate",
+                "goals": ["Apply to jobs", "View application status", "Schedule interviews"]
+            },
+            {
+                "role": "Hiring Manager",
+                "goals": ["Review candidates", "Provide feedback", "Make hiring decisions"]
+            }
         ],
         "non_functional_requirements": {
-            "performance": {"response_time": "500ms p95"},
-            "availability": {"uptime": "99.9%"}
+            "performance": {
+                "response_time": "500ms p95",
+                "throughput": "1000 requests/second"
+            },
+            "availability": {
+                "uptime": "99.9%",
+                "recovery_time": "< 5 minutes"
+            },
+            "scalability": {
+                "concurrent_users": "10000",
+                "data_growth": "1TB/year"
+            },
+            "security": {
+                "authentication": "OAuth 2.0 / OIDC",
+                "encryption": "TLS 1.3, AES-256",
+                "compliance": "GDPR, SOC 2"
+            }
         }
     }, indent=2)
-    res = sda.generate_system_design(sample_spec, stream=False)
-    print("\n=== RESULT SUMMARY ===")
+    
+    res = sda.generate_system_design(
+        product_spec_text=sample_spec,
+        project_id="recruitment_platform_v1",
+        version="1.0.0"
+    )
+    
+    print("\n📊 RESULT SUMMARY")
     print(json.dumps(res, indent=2))
 
-# -------------------- MAIN --------------------
+
+# -------------------- MAIN ENTRY --------------------
 if __name__ == "__main__":
-    # Quick inline test
+    print("🚀 System Design Agent - Starting...")
+    print("=" * 60)
+    
+    # Quick inline demonstration
     example_simple_inline()
-
-    # Or load from files
-    # example_run_from_file("sia_output/task_spec_20251027_123456.json", "uxra_output/ux_blueprint_20251027_123500.md")
-
-    # Or interactive
+    
+    # Or load from file outputs of the Product Spec Agent & UX Agent
+    # example_run_from_file(
+    #     "output/sia_output/task_spec_20251027_123456.json",
+    #     "output/uxra_output/ux_blueprint_20251027_123500.md"
+    # )
+    
+    # Interactive mode (optional)
     # sda = SystemDesignAgent()
     # sda.interactive_cli()
